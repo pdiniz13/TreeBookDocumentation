@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: packages/articles/public/controllers/MessagesController.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: packages/articles/public/controllers/MessagesController.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>'use strict';
+
+angular.module('mean.articles')
+
+
+  /**
+   * Handles sumbit message and get all messages on tree profile page
+   */
+  .controller('MessagesController', ['$scope', 'Messages', 'Global', 'GetMessages', 'TreeData', '$stateParams', 'UserImage', '$timeout',
+    /**
+     *
+     * @param $scope
+     * @param Messages
+     * @param Global
+     * @param GetMessages
+     * @param TreeData
+     * @param $stateParams
+     * @param UserImage
+     * @param $timeout
+     */
+      function($scope, Messages, Global, GetMessages, TreeData, $stateParams, UserImage, $timeout) {
+
+      // $scope.global is necissary to get user information
+      $scope.global = Global;
+      // the TreeData factory handles the basic tree data. It is in the services folder.
+      var treeMessages = [];
+
+      /**
+       *
+       * @param url
+       * @param name
+       * @param treeId
+       */
+      var setParams = function(url, name, treeId) {
+        treeMessages.forEach(function(message) {
+          message.imageUrl = url;
+          message.username = name;
+          message.redirect = '#!/trees/' + treeId;
+        });
+      };
+
+      $scope.tree = TreeData.getTree(function(t) {
+        console.log(t.name);
+        setParams(t.imageurl, t.name, t.treeid);
+      });
+
+
+      /**
+       * Post message to database from single tree profile view
+       */
+      $scope.submitMessage = function() {
+        var message = $scope.inputMessage;
+        var username = $scope.global.user.username;
+        var treeid = $scope.tree.treeid;
+        var body = {
+          message: message,
+          username: username,
+          treeid: treeid
+        };
+
+        // Messages is a factory that in services/articles.js
+        Messages.save(body, function(data) {
+          console.log(data[0]);
+          var newMessage = data[0];
+          console.log(newMessage.createdat);
+          //change date format for each message to readable format
+          var date = new Date(newMessage.createdat);
+          var options = {
+            weekday: 'long', year: 'numeric', month: 'short',
+            day: 'numeric', hour: '2-digit', minute: '2-digit'
+          };
+          newMessage.createdat = date.toLocaleDateString('en-us', options);
+          //async load new message to DOM. Loads to end of message list
+          $scope.messages.push(newMessage);
+
+          // UserImage is a factory in services/articles.js
+          UserImage.loadUserImage(newMessage.username, function(url) {
+            console.log(url, 'here');
+            newMessage.imageUrl = url;
+          });
+
+          $scope.inputMessage = '';
+        });
+      };
+
+      /**
+       * get All messages for a Tree and display on tree profile page
+       */
+      $scope.getMessages = function() {
+        // GetMessage is a factory in services/articles.js
+        GetMessages.get({treeid: $stateParams.treeId}, function(messages) {
+          $scope.messages = messages;
+          $scope.messages.forEach(function(message) {
+            message.redirect = '#!/user/' + message.username;
+            // UserImage is a factory in services/articles.js
+            // It is called for each message to get the url of the users picture
+            UserImage.loadUserImage(message.username, function(url) {
+              if (url.length === 0) {
+                // This is a treemesage
+                message.isTree = true;
+                treeMessages.push(message);
+              } else {
+                message.isTree = false; // unused
+              }
+              message.imageUrl = url;
+            });
+          });
+        });
+      };
+
+    }]);
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#authCallback">authCallback</a></li><li><a href="global.html#create">create</a></li><li><a href="global.html#escapeProperty">escapeProperty</a></li><li><a href="global.html#expect">expect</a></li><li><a href="global.html#findTreesByLocation">findTreesByLocation</a></li><li><a href="global.html#forgotpassword">forgotpassword</a></li><li><a href="global.html#getAll">getAll</a></li><li><a href="global.html#getComments">getComments</a></li><li><a href="global.html#getImageUrl">getImageUrl</a></li><li><a href="global.html#getMessagesForTree">getMessagesForTree</a></li><li><a href="global.html#getMessagesForUsers">getMessagesForUsers</a></li><li><a href="global.html#getRandomString">getRandomString</a></li><li><a href="global.html#getTreeData">getTreeData</a></li><li><a href="global.html#getTreeImage">getTreeImage</a></li><li><a href="global.html#getTreeLikes">getTreeLikes</a></li><li><a href="global.html#getUserLikes">getUserLikes</a></li><li><a href="global.html#insertComments">insertComments</a></li><li><a href="global.html#insertLikes">insertLikes</a></li><li><a href="global.html#insertMessagesFromTrees">insertMessagesFromTrees</a></li><li><a href="global.html#isMongoId">isMongoId</a></li><li><a href="global.html#me">me</a></li><li><a href="global.html#mean">mean</a></li><li><a href="global.html#mongoose">mongoose</a></li><li><a href="global.html#postMessageFromUser">postMessageFromUser</a></li><li><a href="global.html#requiresAdmin">requiresAdmin</a></li><li><a href="global.html#requiresLogin">requiresLogin</a></li><li><a href="global.html#resetpassword">resetpassword</a></li><li><a href="global.html#searchTrees">searchTrees</a></li><li><a href="global.html#sendMail">sendMail</a></li><li><a href="global.html#session">session</a></li><li><a href="global.html#signin">signin</a></li><li><a href="global.html#signout">signout</a></li><li><a href="global.html#updateImageUrl">updateImageUrl</a></li><li><a href="global.html#uploadUserImage">uploadUserImage</a></li><li><a href="global.html#user">user</a></li><li><a href="global.html#user1">user1</a></li><li><a href="global.html#UserSchema">UserSchema</a></li><li><a href="global.html#validatePresenceOf">validatePresenceOf</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0-beta1</a> on Mon Mar 23 2015 18:13:46 GMT-0700 (Pacific Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

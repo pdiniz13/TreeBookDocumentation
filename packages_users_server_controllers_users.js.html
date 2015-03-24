@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: packages/users/server/controllers/users.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: packages/users/server/controllers/users.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>'use strict';
+
+/**
+ * Module dependencies.
+ */
+var mongoose = require('mongoose'),
+  User = mongoose.model('User'),
+  async = require('async'),
+  config = require('meanio').loadConfig(),
+  crypto = require('crypto'),
+  nodemailer = require('nodemailer'),
+  templates = require('../template');
+
+/**
+ * Auth callback
+ */
+exports.authCallback = function(req, res) {
+  res.redirect('/');
+};
+
+/**
+ * Show login form
+ */
+exports.signin = function(req, res) {
+  if (req.isAuthenticated()) {
+    return res.redirect('/');
+  }
+  res.redirect('#!/login');
+};
+
+/**
+ * Logout
+ */
+exports.signout = function(req, res) {
+  req.logout();
+  res.redirect('/');
+};
+
+/**
+ * Session
+ */
+exports.session = function(req, res) {
+  res.redirect('/');
+};
+
+/**
+ * Create user
+ */
+exports.create = function(req, res, next) {
+  var user = new User(req.body);
+
+  user.provider = 'local';
+
+  // because we set our user.provider to local our models/user.js validation will always be true
+  req.assert('name', 'You must enter a name').notEmpty();
+  req.assert('email', 'You must enter a valid email address').isEmail();
+  req.assert('password', 'Password must be between 8-20 characters long').len(8, 20);
+  req.assert('username', 'Username cannot be more than 20 characters').len(1, 20);
+  req.assert('confirmPassword', 'Passwords do not match').equals(req.body.password);
+
+  var errors = req.validationErrors();
+  if (errors) {
+    return res.status(400).send(errors);
+  }
+
+  // Hard coded for now. Will address this with the user permissions system in v0.3.5
+  user.roles = ['authenticated'];
+  user.save(function(err) {
+    if (err) {
+      switch (err.code) {
+        case 11000:
+        case 11001:
+          res.status(400).json([{
+            msg: 'Username already taken',
+            param: 'username'
+          }]);
+          break;
+        default:
+          var modelErrors = [];
+
+          if (err.errors) {
+
+            for (var x in err.errors) {
+              modelErrors.push({
+                param: x,
+                msg: err.errors[x].message,
+                value: err.errors[x].value
+              });
+            }
+
+            res.status(400).json(modelErrors);
+          }
+      }
+
+      return res.status(400);
+    }
+    req.logIn(user, function(err) {
+      if (err) return next(err);
+      return res.redirect('/');
+    });
+    res.status(200);
+  });
+};
+/**
+ * Send User
+ */
+exports.me = function(req, res) {
+  res.json(req.user || null);
+};
+
+/**
+ * Find user by id
+ */
+exports.user = function(req, res, next, id) {
+  User
+    .findOne({
+      _id: id
+    })
+    .exec(function(err, user) {
+      if (err) return next(err);
+      if (!user) return next(new Error('Failed to load User ' + id));
+      req.profile = user;
+      next();
+    });
+};
+
+/**
+ * Update user profile image url
+ */
+exports.updateImageUrl = function(req, res, cb) {
+  console.log('req.body in imageUrl', req.body);
+  var username = req.body.username;
+  var url = req.body.imageUrl;
+  User
+    .findOne({
+      username: username
+    }, function(err, user) {
+      user.imageUrl = url;
+      user.save();
+      if( err ) {
+        console.log('error updating ImageUrl in mongoDB for user', err);
+        return err;
+      } else {
+        res.json({username: user.username, url: url });
+      }
+    });
+};
+
+/**
+ * Get user profile image url
+ */
+exports.getImageUrl = function(req, res, next) {
+  var username = req.url.split('/')[2];
+  User
+    .findOne({
+      username: username
+    }, function(err, user){
+      if (user){
+        console.log('user data is ', user);
+        res.send(user.imageUrl);
+      } else{
+        res.send('theme/assets/img/icons/user-icon.png');
+      }
+    });
+};
+
+/**
+ * Resets the password
+ */
+
+exports.resetpassword = function(req, res, next) {
+  User.findOne({
+    resetPasswordToken: req.params.token,
+    resetPasswordExpires: {
+      $gt: Date.now()
+    }
+  }, function(err, user) {
+    if (err) {
+      return res.status(400).json({
+        msg: err
+      });
+    }
+    if (!user) {
+      return res.status(400).json({
+        msg: 'Token invalid or expired'
+      });
+    }
+    req.assert('password', 'Password must be between 8-20 characters long').len(8, 20);
+    req.assert('confirmPassword', 'Passwords do not match').equals(req.body.password);
+    var errors = req.validationErrors();
+    if (errors) {
+      return res.status(400).send(errors);
+    }
+    user.password = req.body.password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    user.save(function(err) {
+      req.logIn(user, function(err) {
+        if (err) return next(err);
+        return res.send({
+          user: user
+        });
+      });
+    });
+  });
+};
+
+/**
+ * Send reset password email
+ */
+function sendMail(mailOptions) {
+  var transport = nodemailer.createTransport(config.mailer);
+  transport.sendMail(mailOptions, function(err, response) {
+    if (err) return err;
+    return response;
+  });
+}
+
+/**
+ * Callback for forgot password link
+ */
+exports.forgotpassword = function(req, res, next) {
+  async.waterfall([
+
+      function(done) {
+        crypto.randomBytes(20, function(err, buf) {
+          var token = buf.toString('hex');
+          done(err, token);
+        });
+      },
+      function(token, done) {
+        User.findOne({
+          $or: [{
+            email: req.body.text
+          }, {
+            username: req.body.text
+          }]
+        }, function(err, user) {
+          if (err || !user) return done(true);
+          done(err, user, token);
+        });
+      },
+      function(user, token, done) {
+        user.resetPasswordToken = token;
+        user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+        user.save(function(err) {
+          done(err, token, user);
+        });
+      },
+      function(token, user, done) {
+        var mailOptions = {
+          to: user.email,
+          from: config.emailFrom
+        };
+        mailOptions = templates.forgot_password_email(user, req, token, mailOptions);
+        sendMail(mailOptions);
+        done(null, true);
+      }
+    ],
+    function(err, status) {
+      var response = {
+        message: 'Mail successfully sent',
+        status: 'success'
+      };
+      if (err) {
+        response.message = 'User does not exist';
+        response.status = 'danger';
+      }
+      res.json(response);
+    }
+  );
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#authCallback">authCallback</a></li><li><a href="global.html#create">create</a></li><li><a href="global.html#escapeProperty">escapeProperty</a></li><li><a href="global.html#expect">expect</a></li><li><a href="global.html#findTreesByLocation">findTreesByLocation</a></li><li><a href="global.html#forgotpassword">forgotpassword</a></li><li><a href="global.html#getAll">getAll</a></li><li><a href="global.html#getComments">getComments</a></li><li><a href="global.html#getImageUrl">getImageUrl</a></li><li><a href="global.html#getMessagesForTree">getMessagesForTree</a></li><li><a href="global.html#getMessagesForUsers">getMessagesForUsers</a></li><li><a href="global.html#getRandomString">getRandomString</a></li><li><a href="global.html#getTreeData">getTreeData</a></li><li><a href="global.html#getTreeImage">getTreeImage</a></li><li><a href="global.html#getTreeLikes">getTreeLikes</a></li><li><a href="global.html#getUserLikes">getUserLikes</a></li><li><a href="global.html#insertComments">insertComments</a></li><li><a href="global.html#insertLikes">insertLikes</a></li><li><a href="global.html#insertMessagesFromTrees">insertMessagesFromTrees</a></li><li><a href="global.html#isMongoId">isMongoId</a></li><li><a href="global.html#me">me</a></li><li><a href="global.html#mean">mean</a></li><li><a href="global.html#mongoose">mongoose</a></li><li><a href="global.html#postMessageFromUser">postMessageFromUser</a></li><li><a href="global.html#requiresAdmin">requiresAdmin</a></li><li><a href="global.html#requiresLogin">requiresLogin</a></li><li><a href="global.html#resetpassword">resetpassword</a></li><li><a href="global.html#searchTrees">searchTrees</a></li><li><a href="global.html#sendMail">sendMail</a></li><li><a href="global.html#session">session</a></li><li><a href="global.html#signin">signin</a></li><li><a href="global.html#signout">signout</a></li><li><a href="global.html#updateImageUrl">updateImageUrl</a></li><li><a href="global.html#uploadUserImage">uploadUserImage</a></li><li><a href="global.html#user">user</a></li><li><a href="global.html#user1">user1</a></li><li><a href="global.html#UserSchema">UserSchema</a></li><li><a href="global.html#validatePresenceOf">validatePresenceOf</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0-beta1</a> on Mon Mar 23 2015 18:13:46 GMT-0700 (Pacific Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

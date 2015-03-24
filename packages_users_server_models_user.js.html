@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: packages/users/server/models/user.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: packages/users/server/models/user.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>'use strict';
+
+/**
+ * Module dependencies.
+ */
+var mongoose  = require('mongoose'),
+    Schema    = mongoose.Schema,
+    crypto    = require('crypto'),
+          _   = require('lodash');
+
+/**
+ * Validations
+ */
+var validatePresenceOf = function(value) {
+  // If you are authenticating by any of the oauth strategies, don't validate.
+  return (this.provider &amp;&amp; this.provider !== 'local') || (value &amp;&amp; value.length);
+};
+
+var validateUniqueEmail = function(value, callback) {
+  var User = mongoose.model('User');
+  User.find({
+    $and: [{
+      email: value
+    }, {
+      _id: {
+        $ne: this._id
+      }
+    }]
+  }, function(err, user) {
+    callback(err || user.length === 0);
+  });
+};
+
+/**
+ * Getter
+ */
+var escapeProperty = function(value) {
+  return _.escape(value);
+};
+
+/**
+ * User Schema
+ */
+
+var UserSchema = new Schema({
+  name: {
+    type: String,
+    required: true,
+    get: escapeProperty
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    // Regexp to validate emails with more strict rules as added in tests/users.js which also conforms mostly with RFC2822 guide lines
+    match: [/^(([^&lt;>()[\]\\.,;:\s@\"]+(\.[^&lt;>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/, 'Please enter a valid email'],
+    validate: [validateUniqueEmail, 'E-mail address is already in-use']
+  },
+  username: {
+    type: String,
+    unique: true,
+    required: true,
+    get: escapeProperty
+  },
+  roles: {
+    type: Array,
+    default: ['authenticated']
+  },
+  hashed_password: {
+    type: String,
+    validate: [validatePresenceOf, 'Password cannot be blank']
+  },
+  provider: {
+    type: String,
+    default: 'local'
+  },
+  imageUrl: {
+    type: String,
+    default: ''
+  },
+  salt: String,
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
+  profile: {},
+  facebook: {},
+  twitter: {},
+  github: {},
+  google: {},
+  linkedin: {}
+});
+
+/**
+ * Virtuals
+ */
+UserSchema.virtual('password').set(function(password) {
+  this._password = password;
+  this.salt = this.makeSalt();
+  this.hashed_password = this.hashPassword(password);
+}).get(function() {
+  return this._password;
+});
+
+/**
+ * Pre-save hook
+ */
+UserSchema.pre('save', function(next) {
+  if (this.isNew &amp;&amp; this.provider === 'local' &amp;&amp; this.password &amp;&amp; !this.password.length)
+    return next(new Error('Invalid password'));
+  next();
+});
+
+/**
+ * Methods
+ */
+UserSchema.methods = {
+
+  /**
+   * HasRole - check if the user has required role
+   *
+   * @param {String} plainText
+   * @return {Boolean}
+   * @api public
+   */
+  hasRole: function(role) {
+    var roles = this.roles;
+    return roles.indexOf('admin') !== -1 || roles.indexOf(role) !== -1;
+  },
+
+  /**
+   * IsAdmin - check if the user is an administrator
+   *
+   * @return {Boolean}
+   * @api public
+   */
+  isAdmin: function() {
+    return this.roles.indexOf('admin') !== -1;
+  },
+
+  /**
+   * Authenticate - check if the passwords are the same
+   *
+   * @param {String} plainText
+   * @return {Boolean}
+   * @api public
+   */
+  authenticate: function(plainText) {
+    return this.hashPassword(plainText) === this.hashed_password;
+  },
+
+  /**
+   * Make salt
+   *
+   * @return {String}
+   * @api public
+   */
+  makeSalt: function() {
+    return crypto.randomBytes(16).toString('base64');
+  },
+
+  /**
+   * Hash password
+   *
+   * @param {String} password
+   * @return {String}
+   * @api public
+   */
+  hashPassword: function(password) {
+    if (!password || !this.salt) return '';
+    var salt = new Buffer(this.salt, 'base64');
+    return crypto.pbkdf2Sync(password, salt, 10000, 64).toString('base64');
+  },
+
+  /**
+   * Hide security sensitive fields
+   *
+   * @returns {*|Array|Binary|Object}
+   */
+  toJSON: function() {
+    var obj = this.toObject();
+    delete obj.hashed_password;
+    delete obj.salt;
+    return obj;
+  }
+};
+
+mongoose.model('User', UserSchema);
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#authCallback">authCallback</a></li><li><a href="global.html#create">create</a></li><li><a href="global.html#escapeProperty">escapeProperty</a></li><li><a href="global.html#expect">expect</a></li><li><a href="global.html#findTreesByLocation">findTreesByLocation</a></li><li><a href="global.html#forgotpassword">forgotpassword</a></li><li><a href="global.html#getAll">getAll</a></li><li><a href="global.html#getComments">getComments</a></li><li><a href="global.html#getImageUrl">getImageUrl</a></li><li><a href="global.html#getMessagesForTree">getMessagesForTree</a></li><li><a href="global.html#getMessagesForUsers">getMessagesForUsers</a></li><li><a href="global.html#getRandomString">getRandomString</a></li><li><a href="global.html#getTreeData">getTreeData</a></li><li><a href="global.html#getTreeImage">getTreeImage</a></li><li><a href="global.html#getTreeLikes">getTreeLikes</a></li><li><a href="global.html#getUserLikes">getUserLikes</a></li><li><a href="global.html#insertComments">insertComments</a></li><li><a href="global.html#insertLikes">insertLikes</a></li><li><a href="global.html#insertMessagesFromTrees">insertMessagesFromTrees</a></li><li><a href="global.html#isMongoId">isMongoId</a></li><li><a href="global.html#me">me</a></li><li><a href="global.html#mean">mean</a></li><li><a href="global.html#mongoose">mongoose</a></li><li><a href="global.html#postMessageFromUser">postMessageFromUser</a></li><li><a href="global.html#requiresAdmin">requiresAdmin</a></li><li><a href="global.html#requiresLogin">requiresLogin</a></li><li><a href="global.html#resetpassword">resetpassword</a></li><li><a href="global.html#searchTrees">searchTrees</a></li><li><a href="global.html#sendMail">sendMail</a></li><li><a href="global.html#session">session</a></li><li><a href="global.html#signin">signin</a></li><li><a href="global.html#signout">signout</a></li><li><a href="global.html#updateImageUrl">updateImageUrl</a></li><li><a href="global.html#uploadUserImage">uploadUserImage</a></li><li><a href="global.html#user">user</a></li><li><a href="global.html#user1">user1</a></li><li><a href="global.html#UserSchema">UserSchema</a></li><li><a href="global.html#validatePresenceOf">validatePresenceOf</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.3.0-beta1</a> on Mon Mar 23 2015 18:13:46 GMT-0700 (Pacific Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
